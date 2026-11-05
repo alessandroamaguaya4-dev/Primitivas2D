@@ -7,82 +7,150 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 
 public class Point {
-    private final FloatBuffer vertexBuffer;//sirve para recibir las coordenadas de los vertices, para que se procesen eficientemente
-    private final int mProgram; //sirve para combinar el vertx y fragment shaders
+
+    // Búfer en memoria nativa directa que almacena las coordenadas de los vértices.
+    // La GPU no puede leer datos gestionados por el Recolector de Basura (Garbage Collector) de Java.
+    private final FloatBuffer vertexBuffer;
+
+    // Identificador único generado por OpenGL para el programa de shaders enlazado.
+    private final int mProgram;
+
+    // Puentes (handles) para conectar variables de Java con las variables del código GLSL:
+    // - positionHandle: Apunta a "vPosition" en el Vertex Shader (tipo attribute).
+    // - colorHandle: Apunta a "vColor" en el Fragment Shader (tipo uniform).
     private int positionHandle, colorHandle;
-    static final int coords_per_vertex = 3; // 3 coordenadas espaciales (X, Y, Z)
-    float[] pointCoords = { 0.25f, -0.25f, 0.0f }; // Coordenadas cartesianas del punto
-    private final int vertexCount = pointCoords.length / coords_per_vertex; // Total de vértices (1 punto)
-    private final int vertexStride = coords_per_vertex * 4; // Zancada: 3 coordenadas * 4 bytes = 12 bytes por vértice
-    float[] color = { 1.0f, 0.75f, 0.25f, 1.0f }; // Color RGBA (naranja/amarillo opaco)
+
+    // Número de componentes numéricas por vértice en el espacio cartesiano (X, Y, Z).
+    static final int COORDS_PER_VERTEX = 3;
+
+    // Coordenadas cartesianas normalizadas de OpenGL (rango de -1.0 a 1.0).
+    // En este caso, representa un único punto en X = 0.25, Y = -0.25, Z = 0.0.
+    float[] pointCoords = {
+            0.0f, 0.7f, 0.0f,
+            -0.4f, 0.3f, 0.0f,
+            0.4f, 0.3f, 0.0f,
+            -0.9f, 0.0f, 0.0f,
+            0.9f, 0.0f, 0.0f,
+            -0.4f, -0.3f, 0.0f,
+            0.4f, -0.3f, 0.0f,
+            0.0f, -0.7f, 0.0f};
+
+    // Total de vértices a procesar. Se calcula dividiendo el total de datos entre las coordenadas por vértice.
+    private final int vertexCount = pointCoords.length / COORDS_PER_VERTEX;
+
+    // Tamaño en bytes entre vértices consecutivos (Stride / Zancada).
+    // Cada dato 'float' en Java ocupa 4 bytes.
+    // Cálculo: 3 coordenadas * 4 bytes/float = 12 bytes por vértice.
+    private final int vertexStride = COORDS_PER_VERTEX * 4;
+
+    // Color asignado al punto en formato RGBA (Red, Green, Blue, Alpha).
+    // Valores entre 0.0f y 1.0f. (Naranja/Amarillo brillante).
+    float[] color = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+    // ----------------------------------------------------------------------------------
+    // CÓDIGO GLSL (Lenguaje de programación para la Tarjeta Gráfica GPU)
+    // ----------------------------------------------------------------------------------
+
+    // 1. VERTEX SHADER: Define la posición espacial (dónde se ubica el punto).
+    private final String vertexShaderCode =
+            "attribute vec4 vPosition;" + // Variable de entrada que recibe las coordenadas (X,Y,Z,W) desde Java.
+                    "void main() {" +
+                    "  gl_Position = vPosition;" + // Variable reservada de OpenGL donde se guarda la posición final en pantalla.
+                    "  gl_PointSize = 50.0;" +     // Tamaño en píxeles del punto dibujado.
+                    "}";
+
+    // 2. FRAGMENT SHADER: Define la apariencia visual y el color del píxel/punto.
+    private final String fragmentShaderCode =
+            "precision mediump float;" + // Establece la precisión matemática de los números decimales en la GPUhay una lowup/high.
+                    "uniform vec4 vColor;" +      // Variable que recibe el color RGBA desde Java.
+                    "void main() {" +
+                    "  gl_FragColor = vColor;" +   // Variable reservada de OpenGL donde se asigna el color final.
+                    "}";
+
+    /**
+     * Constructor de la clase Point.
+     * Inicializa la memoria nativa para la tarjeta gráfica y compila los shaders.
+     */
     public Point() {
-        // 1. Reserva memoria nativa directa fuera del recolector de basura de la JVM (3 floats * 4 bytes = 12 bytes).
+        // 1. Reserva memoria nativa sin gestión del Garbage Collector.
+        // Tamaño en bytes: (número de floats en pointCoords) * 4 bytes/float.
         ByteBuffer byteBuffer = ByteBuffer.allocateDirect(pointCoords.length * 4);
 
-        // 2. Configura el orden de bytes nativo del procesador (Little-Endian o Big-Endian).
+        // 2. Configura el orden de lectura de los bytes según el hardware del dispositivo (Little-Endian o Big-Endian).
         byteBuffer.order(ByteOrder.nativeOrder());
 
-        // 3. Convierte el búfer de bytes en un búfer de tipo float.
+        // 3. Modifica la interpretación del búfer de bytes crudos a un búfer de floats (FloatBuffer).
         vertexBuffer = byteBuffer.asFloatBuffer();
 
-        // 4. Copia las coordenadas de Java a la memoria nativa de la GPU.
+        // 4. Copia los datos del arreglo de Java (pointCoords) a la memoria nativa accesible por la GPU.
         vertexBuffer.put(pointCoords);
 
-        // 5. Reinicia el puntero del búfer a la posición inicial (índice 0) para que OpenGL pueda leerlo correctamente.
+        // 5. Restablece el puntero de lectura del búfer a la posición inicial (índice 0).
         vertexBuffer.position(0);
 
-        // Carga, compilación y vinculación de los Shaders
+        // 6. Carga y compila individualmente los dos shaders requeridos.
         int vertexShader = loadShader(GLES20.GL_VERTEX_SHADER, vertexShaderCode);
         int fragmentShader = loadShader(GLES20.GL_FRAGMENT_SHADER, fragmentShaderCode);
 
-        mProgram = GLES20.glCreateProgram(); // Crea un contenedor de programa OpenGL vacío
-        GLES20.glAttachShader(mProgram, vertexShader); // Asocia el Vertex Shader al programa
-        GLES20.glAttachShader(mProgram, fragmentShader); // Asocia el Fragment Shader al programa
-        GLES20.glLinkProgram(mProgram); // Enlaza y valida la estructura de los shaders en la GPU
+        // 7. Crea un "Programa de OpenGL" (un contenedor vacío en la GPU).
+        mProgram = GLES20.glCreateProgram();
+
+        // 8. Adjunta los dos shaders compilados al programa recién creado.
+        GLES20.glAttachShader(mProgram, vertexShader);
+        GLES20.glAttachShader(mProgram, fragmentShader);
+
+        // 9. Enlaza los shaders dentro del programa para comprobar compatibilidad entre entradas y salidas.
+        GLES20.glLinkProgram(mProgram);
     }
-    public void draw() {
-        GLES20.glUseProgram(mProgram); // Activa el programa OpenGL con sus shaders vinculados
 
-        // Obtiene la referencia de la variable 'vPosition' dentro del Vertex Shader
-        positionHandle = GLES20.glGetAttribLocation(mProgram, "vPosition");
-
-        // Habilita el arreglo de atributos de vértices para que OpenGL use los datos
-        GLES20.glEnableVertexAttribArray(positionHandle);
-
-        // Asocia los datos del búfer de vértices con el atributo de posición en la GPU
-        GLES20.glVertexAttribPointer(
-                positionHandle, coords_per_vertex, GLES20.GL_FLOAT, false, vertexStride, vertexBuffer);
-
-        // Obtiene la referencia de la variable de color y asigna los valores RGBA
-        colorHandle = GLES20.glGetUniformLocation(mProgram, "vColor");
-        GLES20.glUniform4fv(colorHandle, 1, color, 0);
-
-        // Ordena a OpenGL dibujar las primitivas geométricas (en este caso, un punto: GL_POINTS)
-        GLES20.glDrawArrays(GLES20.GL_POINTS, 0, vertexCount);
-
-        // Deshabilita el atributo de posición al terminar para liberar el estado
-        GLES20.glDisableVertexAttribArray(positionHandle);
-    }
-    // Código del Vertex Shader: Asigna las coordenadas del mundo directamente a la pantalla
-    private final String vertexShaderCode =
-            "attribute vec4 vPosition;" +
-                    "void main(){" +
-                    "  gl_Position = vPosition;" +
-                    "}";
-
-    // Código del Fragment Shader (actualmente vacío en este fragmento base)
-    private final String fragmentShaderCode =
-            "precision medium float;" +
-                    "uniform vec4 vColor;" +
-                    "";
-
-    // Método auxiliar para crear, asociar código fuente y compilar un shader en la GPU
+    /**
+     * Carga y compila el código fuente escrito en GLSL dentro de la GPU.
+     *
+     * @param type Tipo de shader (GLES20.GL_VERTEX_SHADER o GLES20.GL_FRAGMENT_SHADER).
+     * @param shaderCode Cadena de texto con el código escrito en GLSL.
+     * @return Retorna el identificador (ID) del shader en la GPU.
+     */
     private int loadShader(int type, String shaderCode) {
-        int shader = GLES20.glCreateShader(type); // Crea el espacio para el shader
-        GLES20.glShaderSource(shader, shaderCode); // Inyecta el código fuente en GLSL
-        GLES20.glCompileShader(shader); // Compila el shader para que la GPU lo entienda
+        int shader = GLES20.glCreateShader(type);
+        GLES20.glShaderSource(shader, shaderCode);
+        GLES20.glCompileShader(shader);
         return shader;
     }
+
+    /**
+     * Método de dibujo (draw).
+     * Se ejecuta continuamente en el ciclo de renderizado para proyectar el punto en pantalla.
+     */
+    public void draw() {
+        // 1. Indica a OpenGL que use el programa ejecutable previamente enlazado (mProgram).
+        GLES20.glUseProgram(mProgram);
+
+        // 2. Obtiene la ubicación en la GPU de la variable vPosition definida en el Vertex Shader.
+        positionHandle = GLES20.glGetAttribLocation(mProgram, "vPosition");
+
+        // 3. Habilita el canal de transmisión de datos para el atributo de posición.
+        GLES20.glEnableVertexAttribArray(positionHandle);
+
+        // 4. Configura el puntero que indica a la GPU cómo interpretar la estructura del vertexBuffer.
+        GLES20.glVertexAttribPointer(
+                positionHandle,
+                COORDS_PER_VERTEX,
+                GLES20.GL_FLOAT,
+                false,
+                vertexStride,
+                vertexBuffer
+        );
+
+        // 5. Obtiene la ubicación en la GPU de la variable uniforme vColor en el Fragment Shader.
+        colorHandle = GLES20.glGetUniformLocation(mProgram, "vColor");
+
+        // 6. Transfiere los 4 datos flotantes del arreglo de Java color hacia la variable uniforme de la GPU.
+        GLES20.glUniform4fv(colorHandle, 1, color, 0);
+
+        // 7. Orden de renderizado para dibujar puntos.
+        GLES20.glDrawArrays(GLES20.GL_POINTS, 0, vertexCount);
+
+        // 8. Desactiva el canal del atributo de posición para mantener un estado limpio en la GPU.
+        GLES20.glDisableVertexAttribArray(positionHandle);
+    }
 }
-
-
