@@ -71,7 +71,10 @@ public class Point {
                     "}";
 
     // Código del Fragment Shader (actualmente vacío en este fragmento base)
-    private final String fragmentShaderCode = "";
+    private final String fragmentShaderCode =
+            "precision medium float;" +
+                    "uniform vec4 vColor;" +
+                    "";
 
     // Método auxiliar para crear, asociar código fuente y compilar un shader en la GPU
     private int loadShader(int type, String shaderCode) {
