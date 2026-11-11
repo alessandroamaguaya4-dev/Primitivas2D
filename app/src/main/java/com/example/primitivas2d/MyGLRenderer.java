@@ -9,12 +9,13 @@ import javax.microedition.khronos.opengles.GL10;
 public class MyGLRenderer implements GLSurfaceView.Renderer {
 
     private Point point;
+    private Line line;
 
     @Override
     public void onDrawFrame(GL10 gl) {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
-        point.draw();
-
+        //point.draw();
+        line.draw();
     }
 
     @Override
@@ -26,6 +27,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
         GLES20.glClearColor(1.0f, 1.0f, 1.0f,1.0f);
         point = new Point();
+        line = new Line();
 
     }
 }
