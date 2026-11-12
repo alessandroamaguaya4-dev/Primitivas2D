@@ -11,11 +11,16 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {
     private Point point;
     private Line line;
 
+    private TriangleStrip triangleStrip;
+    private TriangleFan  triangleFan;
+
     @Override
     public void onDrawFrame(GL10 gl) {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
         //point.draw();
-        line.draw();
+        //line.draw();
+        //triangleStrip.draw();
+        triangleFan.draw();
     }
 
     @Override
@@ -28,6 +33,14 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {
         GLES20.glClearColor(1.0f, 1.0f, 1.0f,1.0f);
         point = new Point();
         line = new Line();
+        triangleStrip = new TriangleStrip();
+        triangleFan = new TriangleFan();
 
+    }
+    public static int loadShader(int type, String shaderCode) {
+        int shader = GLES20.glCreateShader(type);
+        GLES20.glShaderSource(shader, shaderCode);
+        GLES20.glCompileShader(shader);
+        return shader;
     }
 }
