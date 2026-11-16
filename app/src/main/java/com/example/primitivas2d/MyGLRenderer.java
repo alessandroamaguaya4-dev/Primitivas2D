@@ -13,6 +13,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {
 
     private TriangleStrip triangleStrip;
     private TriangleFan  triangleFan;
+    private Pentagono pentagono;
 
     @Override
     public void onDrawFrame(GL10 gl) {
@@ -20,7 +21,8 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {
         //point.draw();
         //line.draw();
         //triangleStrip.draw();
-        triangleFan.draw();
+       // triangleFan.draw();
+        pentagono.draw();
     }
 
     @Override
@@ -35,6 +37,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {
         line = new Line();
         triangleStrip = new TriangleStrip();
         triangleFan = new TriangleFan();
+        pentagono = new Pentagono();
 
     }
     public static int loadShader(int type, String shaderCode) {
